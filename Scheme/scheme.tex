@@ -157,7 +157,7 @@
 
 \part{设计思路}
 
-\chapter{总体设计}
+\chapter{设计概述}
 Transfomer是一种在自然语言处理领域中流行的模型。近年来，Transfomer的成功
 为涉及全局关系的深度学习领域的研究提供了新的方法。Visual Transfomer (ViT)\cite{vit}将Transfomer
 引入计算机视觉领域，获得了良好效果。基于ViT的语义分割\cite{segmenter}在ADE20K数据集上
@@ -201,7 +201,7 @@ Transformer主干网络的模型通常相对于CNN为主干网络的模型难以
 在此基础上进行投票可以获得更好的性能表现。
 
 
-\chapter{主干网络}
+\chapter{整体设计}
 
 \section{遥感图像分割任务与ST-UNet}
 遥感影响的物体分割是一种语义分割任务。这种任务面对大规模的变化、大规模的类内背景差异和较大的类外背景差异。
@@ -217,14 +217,43 @@ Swin Transformer在实践中展现出了极为强大的全局建模能力。而U
 最后，作为以上两个编码器的桥梁，该网路通过一个关系聚合模块(Relation Aggregation Module, RAM)来聚合两个编码器的特征，将Swin-Transformer获得的全局相关关系
 层级化地集成到CNN中。这种方式对在真实世界数据集中的识别起到了极为显著的提高\cite{stunet}。
 
+在该方案中，我们采用该网络的原因主要有如下两点
+
+\begin{itemize}
+    \item Transformer框架在计算机视觉领域有良好的前景
+    \item ST-UNet表现出了较好的性能
+\end{itemize}
+
 
 \section{前景感知的优化}
+前景感知的优化是\cite{farseg}中提出了重要优化之一。前景与背景不均衡的问题常常导致在训练过程中背景主导了梯度，
+但是只有北京的困难部分队训练后期的优化有价值，而这些样本相对稀少。这是该优化提出的动力。它的核心是将损失函数换成
+\eqref{eqn:newloss2}，借此将网络集中在前景和背景的困难样本上。
+
+\begin{equation}
+    \label{eqn:newloss2}
+    l^{'}(p_i,y_i)=[\frac{1}{Z}(1-p_i)^\gamma+\zeta (t)(1-\frac{1}{Z}(1-y_i)^\gamma)]\cdot l(p_i,y_i)
+\end{equation}
+
+其中$p_i$是预测的概率，$y_i$代表第$i$像素的Ground truth。$Z$是一个归一化常数，该常数保证$\sum l(p_i,y_i)=\frac{1}{Z}\sum(1-p_i)^\gamma l(p_i,y_i)$。
+$l(p_i,y_i)$是一个交叉熵损失函数。$\zeta(t)$是一个单调递减的退火函数，其取值范围在$[0,1]$之间。有线性、多项式、余弦三种选择，如图~\ref{fig:annel_func}，
+每种选择有各自的超参数可供控制和调整。
+
+\begin{figure}[htbp]
+    \includegraphics[width=\textwidth]{annealing_funcs.png}
+    \centering
+    \caption{退火函数}
+    \label{fig:annel_func}
+\end{figure}
+
+虽然该优化和主干网络ST-UNet并不来源于同一个工作，但是该优化对遥感图像分割任务中有显著影响的不均衡问题提出了
+解决方案，该解决方案与主干网络独立，具有一定的普适性。因此将该优化加入ST-UNet中以测试其性能并作为一种
+可能的优化候选是合理的，一定程度上也是必要的。
+
+\section{迁移学习}
 \blindtext
 
-\chapter{迁移学习}
-\blindtext
-
-\chapter{数据增强}
+\section{数据增强}
 \blindtext
 
 
@@ -235,13 +264,21 @@ Swin Transformer在实践中展现出了极为强大的全局建模能力。而U
 \section{主干网络和前景感知的优化}
 \blindtext
 
-\section{迁移学习数据增强}
+\section{迁移学习和数据增强}
 \blindtext
 
 \chapter{训练与测试}
 
 \section{训练方法}
-\blindtext
+尽管Transformer在图象上的应用具有较强的竞争力，但是与成熟的卷积神经网络相比，训练技巧还并不成熟\cite{howtotrain}，
+并且由于参数量的区别，Transformer训练通常较难。因此，本方案对ST-UNet的训练提出以下的预案
+
+\subsubsection{迁移学习}
+
+本方案反复强调了迁移学习的重要性。这是因为\cite{howtotrain}中提到，就大多数实际目的而言，迁移预先训练的模型不仅成本效益较高，
+而且会带来更好的结果。对于类似题目所给的这样数据量相对同邻域常用数据集较小的数据集而言，几乎不可能
+通过从零开始训练使其达到接近迁移模型的精度。而对于足够大的数据集，从零开始达到与迁移模型相似的精度
+则需要多花超过2个数量级的时间。
 
 \section{消融试验}
 
