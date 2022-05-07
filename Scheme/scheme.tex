@@ -82,7 +82,7 @@
 
 %%%%%%%%%%%%%
 \newcommand{\Authors}{熊恪峥 \ 徐昊 \ 陈奕凝}  % Replace your name here
-\newcommand{\BookTitle}{Transformer框架下的的遥感图象分割}  % Change your paper title here
+\newcommand{\BookTitle}{以Transformer为主干网络的遥感图象分割}  % Change your paper title here
 \newcommand{\BookSubtitle}{基于ST-UNet} % Replace the type of your report here
 \newcommand{\Date}{2022年5月4日}
 %%%%%%%%%%%%%
@@ -192,9 +192,9 @@
 Transfomer是一种在自然语言处理领域中流行的模型。近年来，Transfomer的成功
 为涉及全局关系的深度学习领域的研究提供了新的方法。Visual Transfomer (ViT)\cite{vit}将Transfomer
 引入计算机视觉领域，获得了良好效果。基于ViT的语义分割\cite{segmenter}在ADE20K数据集上
-达到State-of-the-art，超越了其他同类模型。Swin-Transfomer\cite{swin}通过构建
+达到State-of-the-art，超越了其他同类模型。Swin Transfomer\cite{swin}通过构建
 层次化的Transformer改进了ViT，并且引入Locality，在ADE20K数据集上达到了53.5的mIOU。
-因此在语义分割任务上，Swin-Transformer是一种极具前景的主干网络，有很好的效果预期。
+因此在语义分割任务上，Swin Transformer是一种极具前景的主干网络，有很好的效果预期。
 
 \begin{figure}[htbp]
     \includegraphics[width=\textwidth]{flowchart.png}
@@ -203,9 +203,9 @@ Transfomer是一种在自然语言处理领域中流行的模型。近年来，T
     \label{fig:fulldesign}
 \end{figure}
 
-图~\ref{fig:fulldesign}是我们的整体设计示意图。我们计划使用通过混合CNN和Swin-Transformer结构在遥感影像语义分割上取得了良好效果的
+图~\ref{fig:fulldesign}是我们的整体设计示意图。我们计划使用通过混合CNN和Swin Transformer结构在遥感影像语义分割上取得了良好效果的
 \emph{嵌入了Swin Transformer的UNet(ST-UNet)}\cite{stunet}作为网络结构进行调整和训练。
-该网络结构融合了Swin-Transformer和有成熟广发应用的CNN结构，可以期望能达到
+该网络结构融合了Swin Transformer和有成熟广发应用的CNN结构，可以期望能达到
 较好的效果。
 
 为了处理遥感图像分割中样本的不均衡问题，尤其是前景-背景的不均衡问题，我们计划试验使用
@@ -219,7 +219,7 @@ FarSeg\cite{farseg}中提出的\emph{前景感知的优化}，即使用损失函
 通过以背景中的困难部分作为权重较高的部分，可以是网络集中在前景和背景中的困难样本中，从而实现均衡优化。
 
 Transformer主干网络的模型通常相对于CNN为主干网络的模型难以训练。为了解决这个问题，我们将应用\emph{迁移学习}的方法。
-考虑到题目给定的数据集尺寸相对较小，我们首先在更大更完全的遥感影像数据集中预训练该网络，然后再在题目
+考虑到题目给定的数据集尺寸相对较小，我们首先从预训练模型开始，先在更大更完全的遥感影像数据集中预训练该网络，然后再在题目
 给定的数据集中进行训练。这是提高准确性的有效方法。我们计划采用iSAID数据集\cite{isaid}，该数据集提供了2806张遥感影像，来自
 有多种传感器和多分辨率的平台，图象大小从$800\times800$到$4000\times13000$不等。为了使得该数据集
 和题目给定的数据集尽可能接近，我们将会对iSAID数据集进行进一步处理，裁切成$256\times256$的分块。
@@ -227,6 +227,10 @@ Transformer主干网络的模型通常相对于CNN为主干网络的模型难以
 在数据处理方面，我们将对遥感影像进行\emph{数据增强}，包括随机裁剪、亮度，对比度和饱和度的调整
 加入噪点与随机模糊等。这些影像变换可以模拟遥感图像采集中常见的图像缺陷。这些缺陷可能干扰识别，通过
 对训练集进行数据增强，可以降低这些负面因素对网络训练的影响。
+
+为了保证采取的各项措施行之有效、对模型的性能提升有实际作用，我们将进行\emph{消融试验}(Ablation Study)，
+对各种措施的不同组合分别进行测试并对性能参数进行统计，依据统计结果对措施的参数进行调整，或者确定移除某项措施，
+或者添加某项措施，力求保证各措施有效，措施之间没有相互拮抗的现象发生。
 
 在模型实际应用的过程中，我们将会应用\emph{测试时增强}的方法，在测试时通过数据增强产生额外的推理结果
 在此基础上进行投票可以获得更好的性能表现。
@@ -240,12 +244,12 @@ Transformer主干网络的模型通常相对于CNN为主干网络的模型难以
 并且常见的CNN作为主干网络的模型由于卷积运算的局部性，难以对网络的全局特征进行直接获取。
 
 Swin Transformer在实践中展现出了极为强大的全局建模能力。而UNet是一种常用、表现优秀的的语义分割框架。因此将Swin Transformer嵌入传统的基于CNN的UNet
-中，可以得到ST-UNet这一融合的遥感图像语义分割的框架\cite{stunet}，它具有Swin-Transformer
+中，可以得到ST-UNet这一融合的遥感图像语义分割的框架\cite{stunet}，它具有Swin Transformer
 和CNN平行工作的\emph{双Encoder}架构。一方面，ST-UNet使用空间交互模块(Spatial Interation Module, STM)通过Swin Transformer编码像素级
 的相关性来提高特征的代表能力，尤其是\emph{受到遮蔽的物体}。另一方面，该模型通过一个特征压缩模块(Feature Compression Module, FPM)来减少
 详细信息的丢失，并在补丁标记下采样时浓缩更多的小规模的特征，这些小尺度的特征可以提高地面小尺度物体的分割精度。
 
-最后，作为以上两个编码器的桥梁，该网路通过一个关系聚合模块(Relation Aggregation Module, RAM)来聚合两个编码器的特征，将Swin-Transformer获得的全局相关关系
+最后，作为以上两个编码器的桥梁，该网路通过一个关系聚合模块(Relation Aggregation Module, RAM)来聚合两个编码器的特征，将Swin Transformer获得的全局相关关系
 层级化地集成到CNN中。这种方式对在真实世界数据集中的识别起到了极为显著的提高\cite{stunet}。
 
 在该方案中，我们采用该网络的原因主要有如下两点
@@ -463,12 +467,22 @@ def randaugment(N, M):
 
 \chapter{训练与测试}
 
+测试和调整是非常重要的一步。该部分实现流程主要如图~\ref{fig:modeltraining}
+我们将使用消融试验和参数搜索等方法优化我们的模型。
+
+\begin{figure}[htbp]
+    \includegraphics[width=\textwidth]{model.png}
+    \centering
+    \caption{训练和测试}
+    \label{fig:modeltraining}
+\end{figure}
+
 \section{训练方法}
 本方案选择了Transformer的网络结构。Transformer有较为难以训练的特点，因此我们采用
 AdamW优化器。AdamW常常用于大型预训练模型。它是对Adam优化器的一个改进，为Adam优化器加入L2正则
 使得参数值不会太大。这种方式可以缓解过拟合的问题。此外，训练轮次将使用较大的数值，如300以上。
 在训练时，首先加载预训练模型的参数，通过迁移学习的方法提高模型的准确性。整体训练过程的Pipeline
-如图~\ref{fig:train}所示。
+如图~\ref{fig:trainpipe}所示。
 
 \begin{figure}[htbp]
     \includegraphics[width=\textwidth]{train.png}
