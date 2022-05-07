@@ -87,6 +87,35 @@
 \newcommand{\Date}{2022年5月4日}
 %%%%%%%%%%%%%
 
+\lstset{
+	basicstyle          =   \sffamily,          % 基本代码风格
+	keywordstyle        =   \bfseries,          % 关键字风格
+	commentstyle        =   \rmfamily\itshape,  % 注释的风格，斜体
+	stringstyle         =   \ttfamily,  % 字符串风格
+	flexiblecolumns,                % 别问为什么，加上这个
+	numbers             =   left,   % 行号的位置在左边
+	showspaces          =   false,  % 是否显示空格，显示了有点乱，所以不现实了
+	numberstyle         =   \zihao{-5}\ttfamily,    % 行号的样式，小五号，tt等宽字体
+	showstringspaces    =   false,
+	captionpos          =   t,      % 这段代码的名字所呈现的位置，t指的是top上面
+	frame               =   lrtb,   % 显示边框
+}
+
+\lstdefinestyle{PythonStyle}{
+	language        =   Python, % 语言选Python
+	basicstyle      =   \zihao{-5}\ttfamily,
+	numberstyle     =   \zihao{-5}\ttfamily,
+	keywordstyle    =   \color{blue},
+	keywordstyle    =   [2] \color{teal},
+	stringstyle     =   \color{magenta},
+	commentstyle    =   \color{red}\ttfamily,
+	breaklines      =   true,   % 自动换行，建议不要写太长的行
+	columns         =   fixed,  % 如果不加这一句，字间距就不固定，很丑，必须加
+	basewidth       =   0.5em,
+}
+
+\renewcommand{\lstlistingname}{代码} 
+
 %% Page header and footer setting
 \usepackage{fancyhdr}
 \usepackage{lastpage}
@@ -99,6 +128,8 @@
 \fancyhead[R]{\texttt{第{\thepage}页，共\pageref*{LastPage}页}}
 
 \graphicspath{ {images/} }
+
+\newcommand{\bvec}[1]{\mathbf{#1}}
 
 
 \frenchspacing
@@ -284,24 +315,189 @@ $l(p_i,y_i)$是一个交叉熵损失函数。$\zeta(t)$是一个单调递减的�
 此外，当数据集不能完全满足需求时，可以采用GAN\cite{ganaug}生成数据。但该方案在实际使用中可能出现
 生成质量不高等问题，是一个备用的方案。
 
+此外，从Transformer的性质出发，还有一些常用的增强方法，如Mixup\cite{mixup}、CutMix\cite{cutmix}、
+RandAugment\cite{randaug}等。这些增强方法也是必要的。
+
 \part{实现方法}
 
 \chapter{模型实现}
 
 \section{主干网络和前景感知的优化}
-\blindtext
 
-\section{迁移学习和数据增强}
-\blindtext
+\begin{figure}[htbp]
+    \includegraphics[width=\textwidth]{net_arch.png}
+    \centering
+    \caption{网络结构}
+    \label{fig:netarch}
+\end{figure}
+
+ST-UNet的整体架构如图~\ref{fig:netarch}。它有UNet和Swin Transformer的混合i二狗
+该结构保留了UNet的跨编码器-解码器连接的优秀特点。特别地，该结构有一个双编码器架构，
+该架构由Swin Transformer和基于CNN的残差连接网路组合而成，然后通过RAM完全获得遥感影像的
+信息，然后由SIM和FCM进行处理，这个过程可以显著地提高模型的表现。这些模块的结构如图~\ref{fig:netsimfcmram}。
+
+
+该模型的论文\cite{stunet}中提供了开源代码地址。该开源实现是一个基于pyTorch的实现。考虑的pyTorch
+与PaddlePaddle的API有相当大的相似性，同时PaddlePaddle提供了和pyTorch相对应的API对照表，因此
+该实现可以轻松地迁移到PaddlePaddle，构成本方案的主干网络。
+
+\begin{figure}[H]
+    \centering
+	\caption{SIM模块、FCM模块和RAM模块}
+	\label{fig:netsimfcmram}
+	
+	\subfigure[SIM]{
+		\begin{minipage}[t]{0.32\linewidth}
+			\centering
+			\includegraphics[width=\textwidth]{sim.png}
+	\end{minipage}}
+	\subfigure[FCM]{
+		\begin{minipage}[t]{0.48\linewidth}
+			\centering
+			\includegraphics[width=\textwidth]{fcm.png}
+	\end{minipage}}
+
+    \subfigure[RAM]{
+		\begin{minipage}[t]{0.8\linewidth}
+			\centering
+			\includegraphics[width=\textwidth]{ram.png}
+	\end{minipage}}
+	
+\end{figure}
+
+
+前景感知的优化主要是实现损失函数\eqref{eqn:newloss2}。该实现较为容易，并且FarSeg有开源实现，可以
+通过对\url{https://github.com/Z-Zheng/FarSeg/blob/master/module/loss.py}进行简单的修改从而
+实现。
+
+\begin{lstlisting}[language=Python,numbers=left,style=PythonStyle,label={code:loss},caption=前景感知的优化中损失函数的实现]
+def annealing_softmax_focalloss(y_pred, y_true, t, t_max, ignore_index=255, gamma=2.0,
+                                annealing_function=cosine_annealing):
+    losses = F.cross_entropy(y_pred, y_true, ignore_index=ignore_index, reduction='none')
+    with torch.no_grad():
+        p = y_pred.softmax(dim=1)
+        modulating_factor = (1 - p).pow(gamma)
+        valid_mask = ~ y_true.eq(ignore_index)
+        masked_y_true = torch.where(valid_mask, y_true, torch.zeros_like(y_true))
+        modulating_factor = torch.gather(modulating_factor, dim=1, index=masked_y_true.unsqueeze(dim=1)).squeeze_(dim=1)
+        normalizer = losses.sum() / (losses * modulating_factor).sum()
+        scales = modulating_factor * normalizer
+    if t > t_max:
+        scale = scales
+    else:
+        scale = annealing_function(1, scales, t, t_max)
+    losses = (losses * scale).sum() / (valid_mask.sum() + p.size(0))
+    return losses
+\end{lstlisting}
+
+该文件中$*\_annealing$是退火函数的实现，而$annealing\_softmax\_focalloss$是式\eqref{eqn:newloss2}
+的代码实现，在这里给出如代码~\ref{code:loss}。可以发现该实现只依赖于少数的用于交叉熵损失和生成张量的pyTorch API，因此迁移到PaddlePaddle
+是相当容易的。
+
+\section{数据增强}
+
+数据增强中对图象的几何变换和色彩变换可以简单地使用numpy的基本操作和sklearn等库进行实现。
+这里主要介绍其余几种较为复杂的数据增强方法的实现。
+
+\subsection{Mixup}
+
+Mixup\cite{mixup}是一种相对简单的数据增广策略，通过对输入数据进行简单的线性变换\eqref{eqn:mixup}
+
+\begin{equation}
+    \label{eqn:mixup}
+    \widetilde{\bvec{X}}=\lambda\cdot\bvec{X_0}+(1-\lambda)\cdot\bvec{X_1}
+\end{equation}
+可以有效地增加模型的泛化能力，并且能提高模型对于对抗攻击的鲁棒性。其中$\lambda$取自$\beta$分布，可以取
+$\lambda \sim \beta(2,2)$，使得$\lambda$的取值范围在0.5附近。这样可以取得更好的效果。\url{https://github.com/hongyi-zhang/mixup/blob/master/cifar/utils.py}
+中提供了一个Mixup的实现，同样易于迁移到PaddlePaddle。
+
+\subsection{CutMix}
+CutMix\cite{cutmix}是一种通过拼接图象来进行正则化的数据增强方法，它的定义的是\eqref{eqn:cutmix}
+\begin{equation}
+    \label{eqn:cutmix}
+    \begin{aligned}
+        \widetilde{x}&=\bvec{M}\odot x_A+(\bvec{1}-\bvec{M})\odot x_B \\
+        \widetilde{y}&=\lambda\cdot y_A+(1-\lambda)\cdot y_B 
+    \end{aligned}
+\end{equation}
+其中$\bvec{M}$是一个二进制掩码。该策略相当于对图象随机剪裁之后硬混合，并对标签进行线性组合。$\bvec{M}$
+的取法常常从图像的长款中进行均匀分布的随机取样，即
+\begin{equation}
+    \label{eqn:cutmix_mask}
+    \begin{aligned}
+        r_x &\sim U(0,W),\ r_w=W\sqrt{1-\lambda} \\
+        r_y &\sim U(0,H),\ r_h=H\sqrt{1-\lambda} \\
+    \end{aligned}
+\end{equation}
+该策略较为简单直观，也可以通过现有开源库的组合进行实现。
+
+\subsection{RandAugment}
+
+RandAugment\cite{randaug}是谷歌提出的一种解决自动化增强搜索空间巨大、无法针对具体的模型
+和数据大小的问题的方法。谷歌给出的实现是代码~\ref{code:randaug}。
+
+\begin{lstlisting}[language=Python,numbers=left,style=PythonStyle,label={code:randaug},caption=RandAugment]
+
+import numpy as np
+
+transforms = ['Identity', 'AutoContrast', 'Equalize', 'Rotate', 'Solarize', 'Color', 'Posterize', 'Contrast',
+              'Brightness', 'Sharpness', 'ShearX', 'ShearY', 'TranslateX', 'TranslateY']
+
+def randaugment(N, M):
+    '''
+    Generate a set of distortions.
+    Args:
+    N: Number of augmentation transformations to
+    apply sequentially.
+    M: Magnitude for all the transformations.
+    '''
+    sampled_ops = np.random.choice(transforms, N)
+    return [(op, M) for op in sampled_ops]
+
+\end{lstlisting}
+
+该方法简单直观：随机从大量的变换类型中选择$N$种，并且以强度$M$返回这些变换。
+之后可以对该$M\cdot N$大小的搜索空间进行网格搜索，得到最优的增强策略。这种方法
+并不逊色于PBA、FastAA等数据增强方法，并且显著地减少了搜索空间\cite{ganaug}，
+在多数网络上有较好的效果。
 
 \chapter{训练与测试}
 
 \section{训练方法}
+本方案选择了Transformer的网络结构。Transformer有较为难以训练的特点，因此我们采用
+AdamW优化器。AdamW常常用于大型预训练模型。它是对Adam优化器的一个改进，为Adam优化器加入L2正则
+使得参数值不会太大。这种方式可以缓解过拟合的问题。此外，训练轮次将使用较大的数值，如300以上。
+在训练时，首先加载预训练模型的参数，通过迁移学习的方法提高模型的准确性。整体训练过程的Pipeline
+如图~\ref{fig:train}所示。
 
+\begin{figure}[htbp]
+    \includegraphics[width=\textwidth]{train.png}
+    \centering
+    \caption{训练流程}
+    \label{fig:trainpipe}
+\end{figure}
 
-\subsubsection{迁移学习}
+参照不同Transformer的训练方法及\cite{howtotrain}的结论，在训练中需要的各种参数设计如表~\ref{tbl:train}，
+这些参数将会根据实践的效果进行调整，以达到更好的效果。
 
-
+\begin{table}[htbp]
+    \centering
+    \caption{训练参数}
+    \label{tbl:train}
+    \renewcommand\arraystretch{1.5}
+    \begin{tabular}{c|c}
+        \toprule
+        \hline
+        参数 & 值 \\
+        \hline
+        优化器 & AdamW \\
+        训练轮次(Epochs) & 300/300 \\
+        每轮训练数据量(Batch Size) & 64/32 \\
+        训练策略 & 早停、学习率衰减 \\
+        \hline
+        \bottomrule
+    \end{tabular}
+\end{table}
 
 \section{消融试验}
 
